@@ -1,0 +1,1 @@
+binding.o: binding.c $(HDRS) $(ruby_headers)
