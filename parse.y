@@ -898,6 +898,8 @@ static void token_info_pop_gen(struct parser_params*, const char *token, size_t 
 %type <node> bodystmt compstmt stmts stmt_or_begin stmt expr arg primary command command_call method_call
 %type <node> expr_value arg_value primary_value fcall
 %type <node> if_tail opt_else case_body cases opt_rescue exc_list exc_var opt_ensure
+%type <node> p_case_body p_expr p_stmt p_cases patterns_basic patterns_head patterns_post p_pattern_list p_value
+%type <node> p_assoc_list p_assoc p_kw p_assocs p_kwrest
 %type <node> args call_args opt_call_args
 %type <node> paren_args opt_paren_args args_tail opt_args_tail block_args_tail opt_block_args_tail
 %type <node> command_args aref_args opt_block_arg block_arg var_ref var_lhs
@@ -913,6 +915,7 @@ static void token_info_pop_gen(struct parser_params*, const char *token, size_t 
 %type <node> brace_block cmd_brace_block do_block lhs none fitem
 %type <node> mlhs mlhs_head mlhs_basic mlhs_item mlhs_node mlhs_post mlhs_inner
 %type <id>   fsym keyword_variable user_variable sym symbol operation operation2 operation3
+%type <id>   p_var p_const p_destructor
 %type <id>   cname fname op f_rest_arg f_block_arg opt_f_block_arg f_norm_arg f_bad_arg
 %type <id>   f_kwrest f_label f_arg_asgn call_op call_op2
 /*%%%*/
@@ -2867,6 +2870,17 @@ primary		: literal
 			$$ = dispatch2(case, $2, $4);
 		    %*/
 		    }
+		| k_case expr_value opt_terms
+		  p_case_body
+		  k_end
+		    {
+		    /*%%%*/
+			$$ = NEW_CASE($2, $4);
+			fixpos($$, $2);
+		    /*%
+			$$ = dispatch2(case, $2, $4);
+		    %*/
+		    }
 		| k_case opt_terms case_body k_end
 		    {
 		    /*%%%*/
@@ -3789,9 +3803,431 @@ case_body	: keyword_when args then
 		    %*/
 		    }
 		;
+p_case_body	: tASSOC p_stmt then
+		  compstmt
+		  p_cases
+		    {
+		    /*%%%*/
+			$$ = NEW_WHEN(NEW_LIST($2), $4, $5);
+		    /*%
+		    %*/
+		    }
+		;
+
+p_stmt		: p_expr
+		| p_expr modifier_if expr_value
+		    {
+		    /*%%%*/
+			NODE *iter, *cond;
+			$<vars>2 = dyna_push();
+
+			iter = NEW_ITER(0, $3);
+			iter->nd_iter = NEW_CALL(NEW_CONST(rb_intern("Proc")), rb_intern("new"), 0);
+
+			cond = NEW_CALL(NEW_CONST(rb_intern("PatternCondition")), rb_intern("new"),
+					NEW_LIST(iter));
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternAnd")), rb_intern("new"),
+				      list_append(NEW_LIST($1),
+						  cond));
+			dyna_pop($<vars>2);
+		    /*%
+		    %*/
+		    }
+		| p_expr modifier_unless expr_value
+		    {
+		    /*%%%*/
+			NODE *iter, *cond, *not;
+			$<vars>2 = dyna_push();
+
+			iter = NEW_ITER(0, $3);
+			iter->nd_iter = NEW_CALL(NEW_CONST(rb_intern("Proc")), rb_intern("new"), 0);
+
+			cond = NEW_CALL(NEW_CONST(rb_intern("PatternCondition")), rb_intern("new"),
+					NEW_LIST(iter));
+
+			not = NEW_CALL(NEW_CONST(rb_intern("PatternNot")), rb_intern("new"),
+					NEW_LIST(cond));
+
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternAnd")), rb_intern("new"),
+				      list_append(NEW_LIST($1),
+						  not));
+			dyna_pop($<vars>2);
+		    /*%
+		    %*/
+		    }
+		;
+
+p_expr		: p_value
+		    {
+		    /*%%%*/
+			value_expr($1);
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternValue")), rb_intern("new"), NEW_LIST($1));
+		    /*%
+		    %*/
+		    }
+		| regexp '(' p_pattern_list rparen
+		    {
+		    /*%%%*/
+			value_expr($1);
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternObjectDeconstructor")), rb_intern("new"), list_concat(NEW_LIST($1), $3));
+		    /*%
+		    %*/
+		    }
+		| p_var
+		    {
+		    /*%%%*/
+			const char *name = rb_id2name($1);
+			size_t len = strlen(name);
+			if (len >= 2 && name[len - 1] == '_') {
+			    $$ = NEW_CALL(NEW_CONST(rb_intern("PatternValue")), rb_intern("new"), NEW_LIST(gettable($1)));
+			}
+			else {
+			    $$ = assignable($1, 0);
+			    if (!$$) $$ = NEW_BEGIN(0);
+			    $$ = block_append($$, NEW_BLOCK(NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+								     list_append(NEW_LIST(NEW_LIT(ID2SYM($<id>1))), NEW_FCALL(rb_intern("binding"), 0)))));
+			}
+		    /*%
+		    %*/
+		    }
+		| p_const
+		    {
+		    /*%%%*/
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternValue")), rb_intern("new"), NEW_LIST(NEW_CONST($1)));
+		    /*%
+		    %*/
+		    }
+		| p_destructor '(' p_pattern_list rparen
+		    {
+		    /*%%%*/
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternObjectDeconstructor")), rb_intern("new"), list_concat(NEW_LIST(gettable($1)), $3));
+		    /*%
+		    %*/
+		    }
+		| tLBRACK p_pattern_list ']'
+		    {
+		    /*%%%*/
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternObjectDeconstructor")), rb_intern("new"), list_concat(NEW_LIST(NEW_CONST(rb_intern("Array"))), $2));
+		    /*%
+		    %*/
+		    }
+		| tLPAREN p_expr ')'
+		    {
+		    /*%%%*/
+			$$ = $2;
+		    /*%
+		    %*/
+		    }
+		| tLBRACE p_assoc_list '}'
+		    {
+		    /*%%%*/
+			NODE *args = NEW_LIST(NEW_CONST(rb_intern("Hash")));
+			args = list_append(args, NEW_LIT(ID2SYM(rb_intern("has_key?"))));
+			args = list_append(args, NEW_LIT(ID2SYM(rb_intern("[]"))));
+			args = list_append(args, NEW_HASH($2));
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternKeywordArgStyleDeconstructor")), rb_intern("new"), args);
+		    /*%
+		    %*/
+		    }
+		| p_expr tANDOP p_expr
+		    {
+		    /*%%%*/
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternAnd")), rb_intern("new"), list_append(NEW_LIST($1), $3));
+		    /*%
+		    %*/
+		    }
+		| p_expr tOROP p_expr
+		    {
+		    /*%%%*/
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternOr")), rb_intern("new"), list_append(NEW_LIST($1), $3));
+		    /*%
+		    %*/
+		    }
+		| '!' p_expr
+		    {
+		    /*%%%*/
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternNot")), rb_intern("new"),
+				      NEW_LIST($2));
+		    /*%
+		    %*/
+		    }
+		;
+
+p_value	: literal
+		| strings
+		| xstring
+		| regexp
+		| words
+		| qwords
+		| symbols
+		| qsymbols
+		;
+
+p_assoc_list	: p_assocs
+		| p_assocs ',' p_kwrest
+		    {
+		    /*%%%*/
+			$$ = list_concat($1, $3);
+		    /*%
+		    %*/
+		    }
+		| p_kwrest
+		| none
+		;
+
+
+p_assocs	: p_assoc
+		| p_assocs ',' p_assoc
+		    {
+		    /*%%%*/
+			$$ = list_concat($1, $3);
+		    /*%
+		    %*/
+		    }
+		;
+
+p_assoc	: p_value tASSOC p_expr
+		    {
+		    /*%%%*/
+			value_expr($1);
+			$$ = list_append(NEW_LIST($1), $3);
+			/*%
+		    %*/
+		    }
+		| p_kw
+		| tSTRING_BEG string_contents tLABEL_END p_expr
+		    {
+		    /*%%%*/
+			$$ = list_append(NEW_LIST(dsym_node($2)), $4);
+		    /*%
+
+		    %*/
+		    }
+		;
+
+p_kw	: tLABEL p_expr
+		    {
+		    /*%%%*/
+			$$ = list_append(NEW_LIST(NEW_LIT(ID2SYM($1))), $2);
+		    /*%
+
+		    %*/
+		    }
+		| tLABEL
+		    {
+		    /*%%%*/
+			NODE *v = assignable($1, 0);
+			NODE *var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+					     list_append(NEW_LIST(NEW_LIT(ID2SYM($1))), NEW_FCALL(rb_intern("binding"), 0)));
+			$$ = list_append(NEW_LIST(NEW_LIT(ID2SYM($1))),
+					 block_append(v, var));
+		    /*%
+		    %*/
+		    }
+		;
+
+p_kwrest	: kwrest_mark tIDENTIFIER
+		    {
+		    /*%%%*/
+			NODE *v = assignable($2, 0);
+			NODE *var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+					     list_append(NEW_LIST(NEW_LIT(ID2SYM($2))), NEW_FCALL(rb_intern("binding"), 0)));
+			$$ = list_append(NEW_LIST(NEW_CONST(rb_intern("PatternHashRest"))),
+					 block_append(v, var));
+		    /*%
+		    %*/
+		    }
+		| kwrest_mark
+		    {
+		    /*%%%*/
+			NODE *var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+					     list_append(NEW_LIST(NEW_LIT(rb_intern("_"))), NEW_FCALL(rb_intern("binding"), 0)));
+			$$ = list_append(NEW_LIST(NEW_CONST(rb_intern("PatternHashRest"))),
+					 var);
+		    /*%
+		    %*/
+		    }
+
+p_var	: tIDENTIFIER
+		;
+
+p_const	: tCONSTANT
+		;
+
+p_destructor	: tIDENTIFIER
+		| tCONSTANT
+		;
+
+p_pattern_list	: none
+		    {
+		    /*%%%*/
+		        $$ = NEW_LIST(0);
+		    /*%
+		    %*/
+		    }
+		| patterns_basic
+		;
+
+
+patterns_basic	: p_expr
+		    {
+		    /*%%%*/
+		        $$ = NEW_LIST($1);
+		    /*%
+		    %*/
+		    }
+		| patterns_head
+		| patterns_head p_expr
+		    {
+		    /*%%%*/
+		        $$ = list_append($1, $2);
+		    /*%
+		    %*/
+		    }
+		| patterns_head tSTAR tIDENTIFIER ',' patterns_post
+		    {
+		    /*%%%*/
+		        NODE *v, *var, *q;
+			v = assignable($3, 0);
+		        var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+				       list_append(NEW_LIST(NEW_LIT(ID2SYM($<id>3))), NEW_FCALL(rb_intern("binding"), 0)));
+		        q = NEW_CALL(NEW_CONST(rb_intern("PatternQuantifier")), rb_intern("new"), 0);
+		        $$ = list_append($1, block_append(v, var));
+		        $$ = list_append($$, q);
+		        $$ = list_concat($$, $5);
+		    /*%
+		    %*/
+		    }
+		| patterns_head tSTAR tIDENTIFIER
+		    {
+		    /*%%%*/
+		        NODE *v, *var, *q;
+			v = assignable($3, 0);
+		        var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+				       list_append(NEW_LIST(NEW_LIT(ID2SYM($<id>3))), NEW_FCALL(rb_intern("binding"), 0)));
+		        q = NEW_CALL(NEW_CONST(rb_intern("PatternQuantifier")), rb_intern("new"), 0);
+			$$ = list_append($1, block_append(v, var));
+		        $$ = list_append($$, q);
+		    /*%
+		    %*/
+		    }
+		| patterns_head tSTAR
+		    {
+		    /*%%%*/
+		        NODE *var, *q;
+		        var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+				       list_append(NEW_LIST(NEW_LIT(ID2SYM(rb_intern("_")))), NEW_FCALL(rb_intern("binding"), 0)));
+		        q = NEW_CALL(NEW_CONST(rb_intern("PatternQuantifier")), rb_intern("new"), 0);
+		        $$ = list_append($1, var);
+		        $$ = list_append($$, q);
+		    /*%
+		    %*/
+		    }
+		| patterns_head tSTAR ',' patterns_post
+		    {
+		    /*%%%*/
+		        NODE *var, *q;
+		        var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+				       list_append(NEW_LIST(NEW_LIT(ID2SYM(rb_intern("_")))), NEW_FCALL(rb_intern("binding"), 0)));
+		        q = NEW_CALL(NEW_CONST(rb_intern("PatternQuantifier")), rb_intern("new"), 0);
+		        $$ = list_append($1, var);
+		        $$ = list_append($$, q);
+		        $$ = list_concat($$, $4);
+		    /*%
+		    %*/
+		    }
+		| tSTAR tIDENTIFIER
+		    {
+		    /*%%%*/
+		        NODE *v, *var, *q;
+			v = assignable($2, 0);
+			var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+				       list_append(NEW_LIST(NEW_LIT(ID2SYM($<id>2))), NEW_FCALL(rb_intern("binding"), 0)));
+			q = NEW_CALL(NEW_CONST(rb_intern("PatternQuantifier")), rb_intern("new"), 0);
+			$$ = NEW_LIST(block_append(v, var));
+			$$ = list_append($$, q);
+		    /*%
+		    %*/
+		    }
+		| tSTAR tIDENTIFIER ',' patterns_post
+		    {
+		    /*%%%*/
+		        NODE *v, *var, *q;
+			v = assignable($2, 0);
+			var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+				       list_append(NEW_LIST(NEW_LIT(ID2SYM($<id>2))), NEW_FCALL(rb_intern("binding"), 0)));
+			q = NEW_CALL(NEW_CONST(rb_intern("PatternQuantifier")), rb_intern("new"), 0);
+			$$ = NEW_LIST(block_append(v, var));
+			$$ = list_append($$, q);
+			$$ = list_concat($$, $4);
+		    /*%
+		    %*/
+		    }
+		| tSTAR
+		    {
+		    /*%%%*/
+		        NODE *var, *q;
+		        var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+				       list_append(NEW_LIST(NEW_LIT(ID2SYM(rb_intern("_")))), NEW_FCALL(rb_intern("binding"), 0)));
+		        q = NEW_CALL(NEW_CONST(rb_intern("PatternQuantifier")), rb_intern("new"), 0);
+		        $$ = NEW_LIST(var);
+		        $$ = list_append($$, q);
+		    /*%
+		    %*/
+		    }
+		| tSTAR ',' patterns_post
+		    {
+		    /*%%%*/
+		        NODE *var, *q;
+		        var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+				       list_append(NEW_LIST(NEW_LIT(ID2SYM(rb_intern("_")))), NEW_FCALL(rb_intern("binding"), 0)));
+		        q = NEW_CALL(NEW_CONST(rb_intern("PatternQuantifier")), rb_intern("new"), 0);
+		        $$ = NEW_LIST(var);
+		        $$ = list_append($$, q);
+			$$ = list_concat($$, $3);
+		    /*%
+		    %*/
+		    }
+		;
+
+patterns_head	: p_expr ','
+		    {
+		    /*%%%*/
+			$$ = NEW_LIST($1);
+		    /*%
+		    %*/
+		    }
+		| patterns_head p_expr ','
+		    {
+		    /*%%%*/
+			$$ = list_append($1, $2);
+		    /*%
+		    %*/
+		    }
+		;
+
+patterns_post	: p_expr
+		    {
+		    /*%%%*/
+		        $$ = NEW_LIST($1);
+		    /*%
+		    %*/
+		    }
+		| patterns_post ',' p_expr
+		    {
+		    /*%%%*/
+		        $$ = list_append($1, $3);
+		    /*%
+		    %*/
+		    }
+		;
 
 cases		: opt_else
 		| case_body
+		;
+
+p_cases	: opt_else
+		| p_case_body
 		;
 
 opt_rescue	: keyword_rescue exc_list exc_var then

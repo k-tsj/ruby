@@ -1302,8 +1302,27 @@ rb_equal_opt(VALUE obj1, VALUE obj2)
 static VALUE vm_call0(rb_thread_t*, VALUE, ID, int, const VALUE*, const rb_callable_method_entry_t *);
 
 static VALUE
+check_match_0(VALUE pointer)
+{
+    VALUE *args = (VALUE *)pointer;
+    VALUE pattern = args[0], target = args[1];
+    const rb_callable_method_entry_t *me = rb_callable_method_entry_with_refinements(CLASS_OF(pattern), idEqq);
+    if (me) {
+	return vm_call0(GET_THREAD(), pattern, idEqq, 1, &target, me);
+    }
+    else {
+	/* fallback to funcall (e.g. method_missing) */
+	return rb_funcallv(pattern, idEqq, 1, &target);
+    }
+}
+
+static VALUE
 check_match(VALUE pattern, VALUE target, enum vm_check_match_type type)
 {
+    VALUE args[2];
+    int state = 0;
+    args[0] = pattern;
+    args[1] = target;
     switch (type) {
       case VM_CHECKMATCH_TYPE_WHEN:
 	return pattern;
@@ -1313,14 +1332,15 @@ check_match(VALUE pattern, VALUE target, enum vm_check_match_type type)
 	}
 	/* fall through */
       case VM_CHECKMATCH_TYPE_CASE: {
-	const rb_callable_method_entry_t *me = rb_callable_method_entry_with_refinements(CLASS_OF(pattern), idEqq);
-	if (me) {
-	    return vm_call0(GET_THREAD(), pattern, idEqq, 1, &target, me);
+	VALUE ret = rb_protect(check_match_0, (VALUE)args, &state);
+	if (state) {
+	    VALUE err = rb_errinfo();
+	    if (!rb_obj_is_kind_of(err, rb_const_get(rb_cObject, rb_intern("PatternNotMatch")))) {
+		rb_jump_tag(state);
+	    }
+	    rb_set_errinfo(Qnil);
 	}
-	else {
-	    /* fallback to funcall (e.g. method_missing) */
-	    return rb_funcallv(pattern, idEqq, 1, &target);
-	}
+	return ret;
       }
       default:
 	rb_bug("check_match: unreachable");
