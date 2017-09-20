@@ -81,7 +81,6 @@ def extract_makefile(makefile, keep = true)
   m = File.read(makefile)
   s = m[/^CLEANFILES[ \t]*=[ \t](.*)/, 1] and $cleanfiles = s.split
   s = m[/^DISTCLEANFILES[ \t]*=[ \t](.*)/, 1] and $distcleanfiles = s.split
-  s = m[/^EXTSO[ \t]*=[ \t](.*)/, 1] and $extso = s.split
   if !(target = m[/^TARGET[ \t]*=[ \t]*(\S*)/, 1])
     return keep
   end
@@ -166,7 +165,6 @@ def extmake(target, basedir = (maybestatic = 'ext'))
     $preload = nil
     $objs = []
     $srcs = []
-    $extso = []
     $compiled[target] = false
     makefile = "./Makefile"
     static = $static
@@ -554,10 +552,6 @@ extend Module.new {
   def timestamp_file(name, target_prefix = nil)
     super.sub(%r[/\.extout\.(?:-\.)?], '/.')
   end
-
-  def configuration(srcdir)
-    super << "EXTSO #{['=', $extso].join(' ')}\n"
-  end
 }
 
 dir = Dir.pwd
@@ -566,14 +560,12 @@ Dir::chdir('ext')
 
 hdrdir = $hdrdir
 $hdrdir = ($top_srcdir = relative_from(srcdir, $topdir = "..")) + "/include"
-extso = []
 fails = []
 exts.each do |d|
   $static = $force_static ? true : $static_ext[d]
 
   if $ignore or !$nodynamic or $static
     result = extmake(d) or abort
-    extso |= $extso
     fails << result unless result == true
   end
 end
@@ -616,7 +608,6 @@ gems.each do |d|
   $extout = extout.dup
   @gemname = d[%r{\A[^/]+}]
   extmake(d, 'gems')
-  extso |= $extso
 end
 $extout = extout
 Dir.chdir('../ext')
@@ -754,7 +745,6 @@ if $configure_only and $command_output
     mf.macro "gems", gems
     mf.macro "EXTOBJS", $extlist.empty? ? ["dmyext.#{$OBJEXT}"] : ["ext/extinit.#{$OBJEXT}", *$extobjs]
     mf.macro "EXTLIBS", $extlibs
-    mf.macro "EXTSO", extso
     mf.macro "EXTLDFLAGS", $extflags.split
     submakeopts = []
     if enable_config("shared", $enable_shared)
@@ -807,9 +797,6 @@ if $configure_only and $command_output
         mf.puts "#{d[0..-2]}#{tgt}:\n\t$(Q)#{submake} $(MFLAGS) V=$(V) $(@F)"
       end
     end
-    mf.puts "\n""extso:\n"
-    mf.puts "\t@echo EXTSO=$(EXTSO)"
-
     mf.puts "\n""note:\n"
     unless fails.empty?
       mf.puts %Q<\t@echo "*** Following extensions failed to configure:">

@@ -508,9 +508,6 @@ static NODE *new_xstring_gen(struct parser_params *, NODE *);
 #define new_xstring(node) new_xstring_gen(parser, node)
 #define new_string1(str) (str)
 
-#define new_brace_body(param, stmt) NEW_ITER(param, stmt)
-#define new_do_body(param, stmt) NEW_ITER(param, stmt)
-
 static NODE *match_op_gen(struct parser_params*,NODE*,NODE*);
 #define match_op(node1,node2) match_op_gen(parser, (node1), (node2))
 
@@ -574,9 +571,6 @@ static VALUE new_regexp_gen(struct parser_params *, VALUE, VALUE);
 static VALUE new_xstring_gen(struct parser_params *, VALUE);
 #define new_xstring(str) new_xstring_gen(parser, str)
 #define new_string1(str) dispatch1(string_literal, str)
-
-#define new_brace_body(param, stmt) dispatch2(brace_block, escape_Qundef(param), stmt)
-#define new_do_body(param, stmt) dispatch2(do_block, escape_Qundef(param), stmt)
 
 #define const_path_field(w, n) dispatch2(const_path_field, (w), (n))
 #define top_const_field(n) dispatch1(top_const_field, (n))
@@ -901,22 +895,22 @@ static void token_info_pop_gen(struct parser_params*, const char *token, size_t 
 %type <node> p_case_body p_expr p_stmt p_cases patterns_basic patterns_head patterns_post p_pattern_list p_value
 %type <node> p_assoc_list p_assoc p_kw p_assocs p_kwrest
 %type <node> args call_args opt_call_args
-%type <node> paren_args opt_paren_args args_tail opt_args_tail block_args_tail opt_block_args_tail
+%type <node> paren_args opt_paren_args args_tail p_args_tail opt_args_tail p_opt_args_tail block_args_tail opt_block_args_tail
 %type <node> command_args aref_args opt_block_arg block_arg var_ref var_lhs
 %type <node> command_rhs arg_rhs
 %type <node> command_asgn mrhs mrhs_arg superclass block_call block_command
 %type <node> f_block_optarg f_block_opt
-%type <node> f_arglist f_args f_arg f_arg_item f_optarg f_marg f_marg_list f_margs
+%type <node> f_arglist f_args f_arg f_arg_item p_f_args p_f_arg p_f_arg_item f_optarg f_marg f_marg_list f_margs
 %type <node> assoc_list assocs assoc undef_list backref string_dvar for_var
 %type <node> block_param opt_block_param block_param_def f_opt
-%type <node> f_kwarg f_kw f_block_kwarg f_block_kw
+%type <node> f_kwarg f_kw f_block_kwarg f_block_kw p_kwarg
 %type <node> bv_decls opt_bv_decl bvar
-%type <node> lambda f_larglist lambda_body brace_body do_body
+%type <node> lambda f_larglist lambda_body
 %type <node> brace_block cmd_brace_block do_block lhs none fitem
-%type <node> mlhs mlhs_head mlhs_basic mlhs_item mlhs_node mlhs_post mlhs_inner
+%type <node> mlhs mlhs_head mlhs_basic mlhs_item mlhs_node mlhs_post mlhs_inner p_f_rest_arg
 %type <id>   fsym keyword_variable user_variable sym symbol operation operation2 operation3
 %type <id>   p_var p_const p_destructor
-%type <id>   cname fname op f_rest_arg f_block_arg opt_f_block_arg f_norm_arg f_bad_arg
+%type <id>   cname fname op f_rest_arg f_block_arg opt_f_block_arg opt_p_block_arg f_norm_arg f_bad_arg
 %type <id>   f_kwrest f_label f_arg_asgn call_op call_op2
 /*%%%*/
 /*%
@@ -947,6 +941,7 @@ static void token_info_pop_gen(struct parser_params*, const char *token, size_t 
 %token tCOLON3		":: at EXPR_BEG"
 %token <id> tOP_ASGN	/* +=, -=  etc. */
 %token tASSOC		"=>"
+%token tPATTERN	"=("
 %token tLPAREN		"("
 %token tLPAREN_ARG	"( arg"
 %token tRPAREN		")"
@@ -1297,6 +1292,16 @@ stmt		: keyword_alias fitem {SET_LEX_STATE(EXPR_FNAME|EXPR_FITEM);} fitem
 			$$ = dispatch1(END, $3);
 		    %*/
 		    }
+		| tPATTERN p_f_args ')' '=' expr
+		    {
+		    /*%%%*/
+			value_expr($5);
+			$$ = NEW_CASE($5, NEW_WHEN(NEW_LIST(NEW_CALL(NEW_CONST(rb_intern("PatternObjectDeconstructor")),
+								     rb_intern("new"),
+								     list_concat(NEW_LIST(NEW_CONST(rb_intern("Array"))), $2))), NEW_BEGIN(0), 0));
+		    /*%
+		    %*/
+		    }
 		| command_asgn
 		| mlhs '=' command_call
 		    {
@@ -1469,17 +1474,23 @@ block_command	: block_call
 
 cmd_brace_block	: tLBRACE_ARG
 		    {
+			$<vars>1 = dyna_push();
 		    /*%%%*/
 			$<num>$ = ruby_sourceline;
 		    /*%
 		    %*/
 		    }
-		  brace_body '}'
+		  opt_block_param
+		  compstmt
+		  '}'
 		    {
-			$$ = $3;
 		    /*%%%*/
+			$$ = NEW_ITER($3,$4);
 			nd_set_line($$, $<num>2);
-		    /*% %*/
+		    /*%
+			$$ = dispatch2(brace_block, escape_Qundef($3), $4);
+		    %*/
+			dyna_pop($<vars>1);
 		    }
 		;
 
@@ -3568,16 +3579,22 @@ lambda_body	: tLAMBEG compstmt '}'
 
 do_block	: keyword_do_block
 		    {
+			$<vars>1 = dyna_push();
 		    /*%%%*/
 			$<num>$ = ruby_sourceline;
 		    /*% %*/
 		    }
-		  do_body keyword_end
+		  opt_block_param
+		  compstmt
+		  keyword_end
 		    {
-			$$ = $3;
 		    /*%%%*/
+			$$ = NEW_ITER($3,$4);
 			nd_set_line($$, $<num>2);
-		    /*% %*/
+		    /*%
+			$$ = dispatch2(do_block, escape_Qundef($3), $4);
+		    %*/
+			dyna_pop($<vars>1);
 		    }
 		;
 
@@ -3746,49 +3763,41 @@ method_call	: fcall paren_args
 
 brace_block	: '{'
 		    {
+			$<vars>1 = dyna_push();
 		    /*%%%*/
 			$<num>$ = ruby_sourceline;
-		    /*% %*/
+		    /*%
+                    %*/
 		    }
-		  brace_body '}'
+		  opt_block_param
+		  compstmt '}'
 		    {
-			$$ = $3;
 		    /*%%%*/
+			$$ = NEW_ITER($3,$4);
 			nd_set_line($$, $<num>2);
-		    /*% %*/
+		    /*%
+			$$ = dispatch2(brace_block, escape_Qundef($3), $4);
+		    %*/
+			dyna_pop($<vars>1);
 		    }
 		| keyword_do
 		    {
+			$<vars>1 = dyna_push();
 		    /*%%%*/
 			$<num>$ = ruby_sourceline;
-		    /*% %*/
+		    /*%
+                    %*/
 		    }
-		  do_body keyword_end
+		  opt_block_param
+		  compstmt keyword_end
 		    {
-			$$ = $3;
 		    /*%%%*/
+			$$ = NEW_ITER($3,$4);
 			nd_set_line($$, $<num>2);
-		    /*% %*/
-		    }
-		;
-
-brace_body	: {$<vars>$ = dyna_push();}
-		  {$<val>$ = cmdarg_stack >> 1; CMDARG_SET(0);}
-		  opt_block_param compstmt
-		    {
-			$$ = new_brace_body($3, $4);
+		    /*%
+			$$ = dispatch2(do_block, escape_Qundef($3), $4);
+		    %*/
 			dyna_pop($<vars>1);
-			CMDARG_SET($<num>2);
-		    }
-		;
-
-do_body 	: {$<vars>$ = dyna_push();}
-		  {$<val>$ = cmdarg_stack >> 1; CMDARG_SET(0);}
-		  opt_block_param compstmt
-		    {
-			$$ = new_do_body($3, $4);
-			dyna_pop($<vars>1);
-			CMDARG_SET($<num>2);
 		    }
 		;
 
@@ -3929,6 +3938,12 @@ p_expr		: p_value
 		    /*%
 		    %*/
 		    }
+		| tPATTERN p_f_args ')'
+		    {
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternObjectDeconstructor")),
+				      rb_intern("new"),
+				      list_concat(NEW_LIST(NEW_CONST(rb_intern("Array"))), $2));
+		    }
 		| p_expr tANDOP p_expr
 		    {
 		    /*%%%*/
@@ -3950,6 +3965,193 @@ p_expr		: p_value
 				      NEW_LIST($2));
 		    /*%
 		    %*/
+		    }
+		;
+
+p_kwarg	: p_kw
+		    {
+		    /*%%%*/
+			$$ = $1;
+		    /*%
+		    %*/
+		    }
+		| p_kwarg ',' p_kw
+		    {
+		    /*%%%*/
+			$$ = list_concat($1, $3);
+		    /*%
+		    %*/
+		    }
+		;
+
+opt_p_block_arg:
+		/*  ',' f_block_arg */
+		/*     { */
+		/* 	$$ = $2; */
+		/*     } */
+		/* | */
+		 none
+		    {
+		    /*%%%*/
+			$$ = 0;
+		    /*%
+			$$ = Qundef;
+		    %*/
+		    }
+		;
+
+p_args_tail	: p_kwarg ',' p_kwrest opt_p_block_arg
+		    {
+			NODE *args = NEW_LIST(NEW_CONST(rb_intern("Hash")));
+			args = list_append(args, NEW_LIT(ID2SYM(rb_intern("has_key?"))));
+			args = list_append(args, NEW_LIT(ID2SYM(rb_intern("[]"))));
+			args = list_append(args, NEW_HASH(list_concat($1, $3)));
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternKeywordArgStyleDeconstructor")), rb_intern("new"), args);
+		    }
+		| p_kwarg opt_p_block_arg
+		    {
+			NODE *args = NEW_LIST(NEW_CONST(rb_intern("Hash")));
+			args = list_append(args, NEW_LIT(ID2SYM(rb_intern("has_key?"))));
+			args = list_append(args, NEW_LIT(ID2SYM(rb_intern("[]"))));
+			args = list_append(args, NEW_HASH($1));
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternKeywordArgStyleDeconstructor")), rb_intern("new"), args);
+		    }
+		| p_kwrest opt_p_block_arg
+		    {
+		    /*%%%*/
+			NODE *args = NEW_LIST(NEW_CONST(rb_intern("Hash")));
+			args = list_append(args, NEW_LIT(ID2SYM(rb_intern("has_key?"))));
+			args = list_append(args, NEW_LIT(ID2SYM(rb_intern("[]"))));
+			args = list_append(args, NEW_HASH($1));
+			$$ = NEW_CALL(NEW_CONST(rb_intern("PatternKeywordArgStyleDeconstructor")), rb_intern("new"), args);
+		    /*%
+		    %*/
+		    }
+		/* | p_block_arg */
+		/*     { */
+		/* 	$$ = new_args_tail(Qnone, Qnone, $1); */
+		/*     } */
+		;
+
+p_opt_args_tail: ',' p_args_tail
+		    {
+			$$ = $2;
+		    }
+		| none
+		;
+
+p_restarg_mark	: '*'
+		| tSTAR
+		;
+
+p_f_rest_arg	: p_restarg_mark tIDENTIFIER
+		    {
+		    /*%%%*/
+		        NODE *v, *var, *q;
+			v = assignable($2, 0);
+		        var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+				       list_append(NEW_LIST(NEW_LIT(ID2SYM($<id>2))), NEW_FCALL(rb_intern("binding"), 0)));
+		        q = NEW_CALL(NEW_CONST(rb_intern("PatternQuantifier")), rb_intern("new"), 0);
+			$$ = list_append(NEW_LIST(block_append(v, var)), q);
+		    /*%
+		    %*/
+		    }
+		| p_restarg_mark
+		    {
+		    /*%%%*/
+		        NODE *var, *q;
+		        var = NEW_CALL(NEW_CONST(rb_intern("PatternVariable")), rb_intern("new"),
+				       list_append(NEW_LIST(NEW_LIT(ID2SYM(rb_intern("_")))), NEW_FCALL(rb_intern("binding"), 0)));
+		        q = NEW_CALL(NEW_CONST(rb_intern("PatternQuantifier")), rb_intern("new"), 0);
+			$$ = list_append(NEW_LIST(var), q);
+		    /*%
+		    %*/
+		    }
+		;
+
+p_f_arg_item	: p_expr
+		    {
+		    /*%%%*/
+			$$ = NEW_LIST($1);
+		    /*%
+		    %*/
+		    }
+		;
+
+p_f_arg	: p_f_arg_item
+		| p_f_arg ',' p_f_arg_item
+		    {
+		    /*%%%*/
+			$$ = list_concat($1, $3);
+		    /*%
+		    %*/
+		    }
+		;
+
+p_f_args	:
+		/*  p_f_arg ',' p_f_optarg ',' p_f_rest_arg opt_args_tail */
+		/*     { */
+		/* 	$$ = new_args($1, $3, $5, Qnone, $6); */
+		/*     } */
+		/* | p_f_arg ',' p_f_optarg ',' p_f_rest_arg ',' p_f_arg opt_args_tail */
+		/*     { */
+		/* 	$$ = new_args($1, $3, $5, $7, $8); */
+		/*     } */
+		/* | p_f_arg ',' p_f_optarg opt_args_tail */
+		/*     { */
+		/* 	$$ = new_args($1, $3, Qnone, Qnone, $4); */
+		/*     } */
+		/* | p_f_arg ',' p_f_optarg ',' p_f_arg opt_args_tail */
+		/*     { */
+		/* 	$$ = new_args($1, $3, Qnone, $5, $6); */
+		/*     } */
+		p_f_arg ',' p_f_rest_arg p_opt_args_tail
+		    {
+			$$ = list_concat($1, $3);
+			$$ = list_append($$, $4);
+		    }
+		| p_f_arg ',' p_f_rest_arg ',' p_f_arg p_opt_args_tail
+		    {
+			$$ = list_concat(list_concat($1, $3), $5);
+			$$ = list_append($$, $6);
+		    }
+		| p_f_arg p_opt_args_tail
+		    {
+			$$ = list_append($1, $2);
+		    }
+		/* | p_f_optarg ',' p_f_rest_arg opt_args_tail */
+		/*     { */
+		/* 	$$ = new_args(Qnone, $1, $3, Qnone, $4); */
+		/*     } */
+		/* | p_f_optarg ',' p_f_rest_arg ',' p_f_arg opt_args_tail */
+		/*     { */
+		/* 	$$ = new_args(Qnone, $1, $3, $5, $6); */
+		/*     } */
+		/* | p_f_optarg opt_args_tail */
+		/*     { */
+		/* 	$$ = new_args(Qnone, $1, Qnone, Qnone, $2); */
+		/*     } */
+		/* | p_f_optarg ',' p_f_arg opt_args_tail */
+		/*     { */
+		/* 	$$ = new_args(Qnone, $1, Qnone, $3, $4); */
+		/*     } */
+		| p_f_rest_arg p_opt_args_tail
+		    {
+			$$ = $1;
+		    }
+		| p_f_rest_arg ',' p_f_arg p_opt_args_tail
+		    {
+			$$ = list_concat($1, $3);
+			$$ = list_append($$, $4);
+		    }
+		| p_args_tail
+		    {
+			$$ = NEW_LIST($1);
+		    }
+		| /* none */
+		    {
+			$$ = new_args_tail(Qnone, Qnone, Qnone);
+			$$ = new_args(Qnone, Qnone, Qnone, Qnone, $$);
 		    }
 		;
 
@@ -8357,7 +8559,7 @@ parse_ident(struct parser_params *parser, int c, int cmd_state)
 		if (COND_P()) return keyword_do_cond;
 		if (CMDARG_P() && !IS_lex_state_for(state, EXPR_CMDARG))
 		    return keyword_do_block;
-		if (IS_lex_state_for(state, (EXPR_BEG | EXPR_END | EXPR_ENDARG)))
+		if (IS_lex_state_for(state, (EXPR_BEG | EXPR_ENDARG)))
 		    return keyword_do_block;
 		return keyword_do;
 	    }
@@ -8629,6 +8831,10 @@ parser_yylex(struct parser_params *parser)
 	}
 	else if (c == '>') {
 	    return tASSOC;
+	}
+	else if (c == '(') {
+	    SET_LEX_STATE(EXPR_ARG); /* TODO */
+	    return tPATTERN;
 	}
 	pushback(c);
 	return '=';

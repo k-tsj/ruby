@@ -8,11 +8,7 @@ module Bug
     class TestDln < Test::Unit::TestCase
       def test_check_imported
         bug = '[Bug #6303]'
-        so = File.expand_path("../ext/-test-/win32/dln/dlntest.dll", EnvUtil.rubybin)
-        assert_send([File, :file?, so])
-        path = ENV['PATH']
-        path = File.dirname(so) + RbConfig::CONFIG["PATH_SEPARATOR"] + path
-        assert_in_out_err([{'PATH'=>path}, '-r-test-/win32/dln', '-eexit'], '', [], [], bug, timeout: 10)
+        assert_in_out_err(['-r-test-/win32/dln', '-eexit'], '', [], [], bug, timeout: 10)
       end
 
       def test_nonascii_load

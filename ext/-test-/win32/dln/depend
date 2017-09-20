@@ -1,8 +1,8 @@
 $(TARGET_SO): $(DLNTESTLIB)
 
-$(DLNTESTLIB): dlntest.dll
+$(DLNTESTLIB): $(topdir)/dlntest.dll
 
-dlntest.dll: libdlntest.o libdlntest.def
+$(topdir)/dlntest.dll: libdlntest.o libdlntest.def
 	$(ECHO) linking shared-object $(@F)
 	-$(Q)$(RM) $@
 	-$(Q)$(MAKEDIRS) $(@D)

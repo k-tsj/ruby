@@ -1,15 +1,6 @@
-class Array
-  def self.deconstruct(val)
-    raise PatternNotMatch unless val.kind_of?(self)
-    val
-  end
-end
-
-class Regexp
-  def deconstruct(val)
-    m = Regexp.new("\\A#{source}\\z", options).match(val.to_s)
-    raise PatternMatch::PatternNotMatch unless m
-    m.captures.empty? ? [m[0]] : m.captures
+class Object
+  def deconstruct
+    self
   end
 end
 
@@ -163,7 +154,14 @@ class PatternObjectDeconstructor < PatternDeconstructor
   end
 
   def ===(val)
-    deconstructed_vals = @deconstructor.deconstruct(val)
+    # deconstructed_vals = @deconstructor.deconstruct(val)
+    v = val.deconstruct
+    deconstructed_vals = case v
+                         when Array
+                           v
+                         else
+                           [v]
+                         end
     k = deconstructed_vals.length - (@subpatterns.length - 2)
     quantifier = @subpatterns.find(&:quantifier?)
     if quantifier
