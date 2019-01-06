@@ -403,7 +403,12 @@ static NODE *method_add_block(struct parser_params*p, NODE *m, NODE *b, const YY
 
 static NODE *new_args(struct parser_params*,NODE*,NODE*,ID,NODE*,NODE*,const YYLTYPE*);
 static NODE *new_args_tail(struct parser_params*,NODE*,ID,ID,const YYLTYPE*);
+static NODE *new_hash_deconstructor_tail(struct parser_params*,NODE*,ID,const YYLTYPE*);
+static NODE *new_hash_deconstructor(struct parser_params *p, NODE *const_node, NODE *hdecon_node, const YYLTYPE *loc);
+
 static NODE *new_kw_arg(struct parser_params *p, NODE *k, const YYLTYPE *loc);
+static NODE *new_ary_deconstructor_tail(struct parser_params *p, NODE *pre_args_node, int has_rest, ID rest_arg, NODE *post_args_node, const YYLTYPE *loc);
+static NODE *new_ary_deconstructor(struct parser_params *p, NODE *const_node, NODE *arg, NODE *adecon_node, const YYLTYPE *loc);
 
 static VALUE negate_lit(struct parser_params*, VALUE);
 static NODE *ret_args(struct parser_params*,NODE*);
@@ -853,9 +858,28 @@ static void token_info_warn(struct parser_params *p, const char *token, token_in
 %type <node> lambda f_larglist lambda_body brace_body do_body
 %type <node> brace_block cmd_brace_block do_block lhs none fitem
 %type <node> mlhs mlhs_head mlhs_basic mlhs_item mlhs_node mlhs_post mlhs_inner
+%type <node> p_case_body p_expr p_top_expr p_cases p_value
+%type <node> p_top_expr1
+%type <node> p_expr1
+%type <node> p_expr2
+%type <node> p_args_tail
+%type <node> p_kw
+%type <node> p_kwarg
+%type <node> p_const
+%type <node> p_variable
+%type <node> p_varref
+%type <node> p_primitive
+%type <node> p_mlhs
+%type <node> p_mlhs_head
+%type <node> p_mlhs_basic
+%type <node> p_mlhs_item
+%type <node> p_mlhs_node
+%type <node> p_mlhs_post
+%type <node> p_mlhs_tail
 %type <id>   fsym keyword_variable user_variable sym symbol operation operation2 operation3
 %type <id>   cname fname op f_rest_arg f_block_arg opt_f_block_arg f_norm_arg f_bad_arg
 %type <id>   f_kwrest f_label f_arg_asgn call_op call_op2 reswords relop dot_or_colon
+%type <id>   p_kwrest
 %token END_OF_INPUT 0	"end-of-input"
 %token <id> '.'
 /* escaped chars, should be ignored otherwise */
@@ -2519,6 +2543,15 @@ primary		: literal
 		    /*% %*/
 		    /*% ripper: case!(Qnil, $3) %*/
 		    }
+		| k_case expr_value opt_terms
+		  p_case_body
+		  k_end
+		    {
+		    /*%%%*/
+			$$ = NEW_CASE3($2, $4, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
 		| k_for for_var keyword_in expr_value_do
 		  compstmt
 		  k_end
@@ -3366,6 +3399,434 @@ case_body	: k_when args then
 
 cases		: opt_else
 		| case_body
+		;
+
+p_case_body	: keyword_in
+		 {
+		     SET_LEX_STATE(EXPR_BEG|EXPR_LABEL);
+		     p->command_start = FALSE;
+		     $<num>$ = p->in_kwarg;
+		     p->in_kwarg = 1;
+		 }
+		  p_top_expr then
+		 {
+		     p->in_kwarg = !!$<num>2;
+		 }
+		  compstmt
+		  p_cases
+		    {
+		    /*%%%*/
+			$$ = NEW_IN($3, $6, $7, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		;
+
+p_top_expr	: p_top_expr1
+		| p_top_expr1 modifier_if expr_value
+		    {
+		    /*%%%*/
+			$$ = new_if(p, $3, remove_begin($1), 0, &@$);
+			fixpos($$, $3);
+		    /*% %*/
+		    /*% ripper: if_mod!($3, $1) %*/
+		    }
+		| p_top_expr1 modifier_unless expr_value
+		    {
+		    /*%%%*/
+			$$ = new_unless(p, $3, remove_begin($1), 0, &@$);
+			fixpos($$, $3);
+		    /*% %*/
+		    /*% ripper: unless_mod!($3, $1) %*/
+		    }
+		;
+
+p_top_expr1	: p_expr
+		| p_expr ','
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, $1, 1, 0, Qnone, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_expr ',' p_mlhs
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor(p, Qnone, $1, $3, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_mlhs_tail
+		| p_args_tail
+		;
+
+p_expr		: p_expr tASSOC p_variable
+		    {
+		    /*%%%*/
+			NODE *n = NEW_LIST($1, &@$);
+			n = list_append(p, n, $3);
+			$$ = new_hash(p, n, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_expr1
+		;
+
+p_expr1	: p_expr2
+		| p_expr1 '|' p_expr2
+		    {
+		    /*%%%*/
+			$$ = NEW_NODE(NODE_OR, $1, $3, 0, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		;
+
+p_expr2	: p_value
+		    {
+		    /*%%%*/
+			$$ = $1;
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_const '(' p_mlhs rparen
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor(p, $1, Qnone, $3, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_const '(' p_args_tail rparen
+		    {
+		    /*%%%*/
+			$$ = new_hash_deconstructor(p, $1, $3, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| tLPAREN p_mlhs rparen
+		    {
+		    /*%%%*/
+			$$ = $2;
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+                | tLPAREN p_args_tail rparen
+		    {
+			$$ = $2;
+		    }
+                | tLPAREN rparen
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, Qnone, 0, 0, Qnone, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+                | tLBRACK p_mlhs rbracket
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor(p, NEW_CONST(rb_intern("Array"), &@$), Qnone, $2, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+                | tLBRACK rbracket
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, Qnone, 0, 0, Qnone, &@$);
+			$$ = new_ary_deconstructor(p, NEW_CONST(rb_intern("Array"), &@$), Qnone, $$, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+                | tLBRACE p_args_tail '}'
+		    {
+		    /*%%%*/
+			$$ = new_hash_deconstructor(p, NEW_CONST(rb_intern("Hash"), &@$), $2, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+                | tLBRACE '}'
+		    {
+		    /*%%%*/
+			$$ = new_hash_deconstructor_tail(p, new_hash(p, Qnone, &@$), 0, &@$);
+			$$ = new_hash_deconstructor(p, NEW_CONST(rb_intern("Hash"), &@$), $$, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		;
+
+p_mlhs		: p_mlhs_basic
+		;
+
+p_mlhs_basic	: p_expr
+		    {
+		    /*%%%*/
+			NODE *pre_args = NEW_LIST($1, &@$);
+			$$ = new_ary_deconstructor_tail(p, pre_args, 0, 0, Qnone, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_mlhs_head
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, $1, 1, 0, Qnone, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_mlhs_head p_mlhs_item
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, list_concat($1, $2), 0, 0, Qnone, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_mlhs_head tSTAR tIDENTIFIER
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, $1, 1, $3, Qnone, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_mlhs_head tSTAR tIDENTIFIER ',' p_mlhs_post
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, $1, 1, $3, $5, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_mlhs_head tSTAR
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, $1, 1, 0, Qnone, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_mlhs_head tSTAR ',' p_mlhs_post
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, $1, 1, 0, $4, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_mlhs_tail
+		;
+
+p_mlhs_item	: p_mlhs_node
+		;
+
+p_mlhs_head	: p_mlhs_item ','
+		| p_mlhs_head p_mlhs_item ','
+		    {
+		    /*%%%*/
+			$$ = list_concat($1, $2);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		;
+
+p_mlhs_tail	: tSTAR tIDENTIFIER
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, Qnone, 1, $2, Qnone, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| tSTAR tIDENTIFIER ',' p_mlhs_post
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, Qnone, 1, $2, $4, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| tSTAR
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, Qnone, 1, 0, Qnone, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| tSTAR ',' p_mlhs_post
+		    {
+		    /*%%%*/
+			$$ = new_ary_deconstructor_tail(p, Qnone, 1, 0, $3, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+
+p_mlhs_post	: p_mlhs_item
+		| p_mlhs_post ',' p_mlhs_item
+		    {
+		    /*%%%*/
+			$$ = list_concat($1, $3);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		;
+
+p_mlhs_node	: p_expr
+		    {
+		    /*%%%*/
+			$$ = NEW_LIST($1, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		;
+
+p_variable	: tIDENTIFIER
+		    {
+		    /*%%%*/
+			$$ = assignable(p, $1, 0, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		;
+
+p_varref	: '^' tIDENTIFIER
+		    {
+		    /*%%%*/
+			    NODE *n = gettable(p, $2, &@$);
+			    if (!(nd_type(n) == NODE_LVAR || nd_type(n) == NODE_DVAR)) {
+				compile_error(p, "%"PRIsVALUE": no such local variable", rb_id2str($2));
+			    }
+			    $$ = n;
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		;
+
+p_const	: tCONSTANT
+		{
+		    /*%%%*/
+		    $$ = gettable(p, $1, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		}
+		;
+
+p_kwarg	: p_kw
+		| p_kwarg ',' p_kw
+		    {
+		    /*%%%*/
+			$$ = list_concat($1, $3);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		;
+
+p_args_tail	: p_kwarg ',' p_kwrest
+		    {
+		    /*%%%*/
+			$$ =  new_hash_deconstructor_tail(p, new_hash(p, $1, &@$), $3, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_kwarg
+		    {
+		    /*%%%*/
+			$$ =  new_hash_deconstructor_tail(p, new_hash(p, $1, &@$), 0, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| p_kwrest
+		    {
+		    /*%%%*/
+			$$ =  new_hash_deconstructor_tail(p, Qnone, $1, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		;
+
+p_kw		: tLABEL p_expr
+		    {
+		    /*%%%*/
+			$$ = list_append(p, NEW_LIST(NEW_LIT(ID2SYM($1), &@$), &@$), $2);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		| tLABEL
+		    {
+		    /*%%%*/
+			$$ = list_append(p, NEW_LIST(NEW_LIT(ID2SYM($1), &@$), &@$), assignable(p, $1, 0, &@$));
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		;
+
+p_kwrest	: kwrest_mark tIDENTIFIER
+		    {
+		        $$ = $2;
+		    }
+		| kwrest_mark
+		    {
+		        $$ = 0;
+		    }
+		;
+
+p_value	: p_primitive
+		| p_primitive tDOT2 p_primitive
+		    {
+		    /*%%%*/
+			value_expr($1);
+			value_expr($3);
+			$$ = NEW_DOT2($1, $3, &@$);
+		    /*% %*/
+		    /*% ripper: dot2!($1, $3) %*/
+		    }
+		| p_primitive tDOT3 p_primitive
+		    {
+		    /*%%%*/
+			value_expr($1);
+			value_expr($3);
+			$$ = NEW_DOT3($1, $3, &@$);
+		    /*% %*/
+		    /*% ripper: dot3!($1, $3) %*/
+		    }
+		| p_primitive tDOT2
+		    {
+		    /*%%%*/
+                        YYLTYPE loc;
+                        loc.beg_pos = @2.end_pos;
+                        loc.end_pos = @2.end_pos;
+
+			value_expr($1);
+			$$ = NEW_DOT2($1, new_nil(&loc), &@$);
+		    /*% %*/
+		    /*% ripper: dot2!($1, Qnil) %*/
+		    }
+		| p_primitive tDOT3
+		    {
+		    /*%%%*/
+                        YYLTYPE loc;
+                        loc.beg_pos = @2.end_pos;
+                        loc.end_pos = @2.end_pos;
+
+			value_expr($1);
+			$$ = NEW_DOT3($1, new_nil(&loc), &@$);
+		    /*% %*/
+		    /*% ripper: dot3!($1, Qnil) %*/
+		    }
+		| p_variable
+		| p_varref
+		| p_const
+		;
+
+p_primitive	: literal
+		| strings
+		| xstring
+		| regexp
+		| words
+		| qwords
+		| symbols
+		| qsymbols
+		| keyword_variable
+		    {
+		    /*%%%*/
+			if (!($$ = gettable(p, $1, &@$))) $$ = NEW_BEGIN(0, &@$);
+		    /*% %*/
+		    /*% ripper: Qnil %*/
+		    }
+		;
+
+p_cases	: opt_else
+		| p_case_body
 		;
 
 opt_rescue	: k_rescue exc_list exc_var then
@@ -10053,6 +10514,24 @@ arg_blk_pass(NODE *node1, NODE *node2)
 
 
 static NODE*
+new_ary_deconstructor(struct parser_params *p, NODE *const_node, NODE *arg, NODE *adecon_node, const YYLTYPE *loc)
+{
+    struct rb_ary_deconstructor_info *adinfo = adecon_node->nd_adinfo;
+
+    adinfo->const_node = const_node;
+
+    if (arg) {
+	NODE *pre_args = NEW_LIST(arg, loc);
+	if (adinfo->pre_args_node) {
+	    adinfo->pre_args_node = list_concat(pre_args, adinfo->pre_args_node);
+	} else {
+	    adinfo->pre_args_node = pre_args;
+	}
+    }
+    return adecon_node;
+}
+
+static NODE*
 new_args(struct parser_params *p, NODE *pre_args, NODE *opt_args, ID rest_arg, NODE *post_args, NODE *tail, const YYLTYPE *loc)
 {
     int saved_line = p->ruby_sourceline;
@@ -10073,6 +10552,36 @@ new_args(struct parser_params *p, NODE *pre_args, NODE *opt_args, ID rest_arg, N
     nd_set_loc(tail, loc);
 
     return tail;
+}
+
+static NODE*
+new_ary_deconstructor_tail(struct parser_params *p, NODE *pre_args_node, int has_rest, ID rest_arg, NODE *post_args_node, const YYLTYPE *loc)
+{
+    int saved_line = p->ruby_sourceline; /* TODO */
+    struct rb_ary_deconstructor_info *adinfo;
+    NODE *node;
+    rb_imemo_tmpbuf_t *tmpbuf = new_tmpbuf();
+
+    adinfo = ZALLOC(struct rb_ary_deconstructor_info);
+    tmpbuf->ptr = (VALUE *)adinfo;
+    node = NEW_NODE(NODE_ADECON, 0, 0, adinfo, loc);
+
+    adinfo->pre_args_node = pre_args_node;
+
+    if (has_rest) {
+	if (rest_arg) {
+	    adinfo->rest_arg_node = assignable(p, rest_arg, 0, loc);
+	} else {
+	    adinfo->rest_arg_node = NEW_BEGIN(0, loc);
+	}
+    } else {
+	adinfo->rest_arg_node = NULL;
+    }
+
+    adinfo->post_args_node = post_args_node;
+
+    p->ruby_sourceline = saved_line;
+    return node;
 }
 
 static NODE*
@@ -10130,6 +10639,39 @@ new_args_tail(struct parser_params *p, NODE *kw_args, ID kw_rest_arg, ID block, 
     }
     else if (kw_rest_arg) {
 	args->kw_rest_arg = NEW_DVAR(kw_rest_arg, loc);
+    }
+
+    p->ruby_sourceline = saved_line;
+    return node;
+}
+
+static NODE*
+new_hash_deconstructor(struct parser_params *p, NODE *const_node, NODE *hdecon_node, const YYLTYPE *loc)
+{
+    struct rb_hash_deconstructor_info *hdinfo = hdecon_node->nd_hdinfo;
+    hdinfo->const_node = const_node;
+    return hdecon_node;
+}
+
+static NODE*
+new_hash_deconstructor_tail(struct parser_params *p, NODE *kw_args, ID kw_rest_arg, const YYLTYPE *loc)
+{
+    int saved_line = p->ruby_sourceline;
+    struct rb_hash_deconstructor_info *hdinfo;
+    NODE *node;
+    rb_imemo_tmpbuf_t *tmpbuf = new_tmpbuf();
+
+    hdinfo = ZALLOC(struct rb_hash_deconstructor_info);
+    tmpbuf->ptr = (VALUE *)hdinfo;
+    node = NEW_NODE(NODE_HDECON, 0, 0, hdinfo, loc);
+
+    hdinfo->kw_args_node      = kw_args;
+
+    if (kw_rest_arg) {
+	hdinfo->kw_rest_arg_node = assignable(p, kw_rest_arg, 0, loc);
+    }
+    else {
+	hdinfo->kw_rest_arg_node = NULL;
     }
 
     p->ruby_sourceline = saved_line;

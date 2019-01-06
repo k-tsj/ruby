@@ -195,6 +195,14 @@ dump_node(VALUE buf, VALUE indent, int comment, const NODE * node)
 	LAST_NODE;
 	F_NODE(nd_body, "when clauses");
 	return;
+      case NODE_CASE3:
+	ANN("case(pattern) statement");
+	ANN("format: case [nd_head]; [nd_body]; end");
+	ANN("example: case x; in 1; foo; in 2; bar; else baz; end");
+	F_NODE(nd_head, "case expr");
+	LAST_NODE;
+	F_NODE(nd_body, "in clauses");
+	return;
 
       case NODE_WHEN:
 	ANN("when clause");
@@ -204,6 +212,16 @@ dump_node(VALUE buf, VALUE indent, int comment, const NODE * node)
 	F_NODE(nd_body, "when body");
 	LAST_NODE;
 	F_NODE(nd_next, "next when clause");
+	return;
+
+      case NODE_IN:
+	ANN("in clause");
+	ANN("format: in [nd_head]; [nd_body]; (when or else) [nd_next]");
+	ANN("example: case x; in 1; foo; in 2; bar; else baz; end");
+	F_NODE(nd_head, "in value");
+	F_NODE(nd_body, "in body");
+	LAST_NODE;
+	F_NODE(nd_next, "next in clause");
 	return;
 
       case NODE_WHILE:
@@ -1015,6 +1033,24 @@ dump_node(VALUE buf, VALUE indent, int comment, const NODE * node)
 	F_NODE(nd_args, "arguments");
 	LAST_NODE;
 	F_NODE(nd_body, "body");
+	return;
+
+      case NODE_ADECON:
+	ANN("array deconstructor");
+	ANN("format: TODO");
+	F_NODE(nd_adinfo->pre_args_node, "TODO");
+	F_NODE(nd_adinfo->rest_arg_node, "TODO");
+	LAST_NODE;
+	F_NODE(nd_adinfo->post_args_node, "TODO");
+	return;
+
+      case NODE_HDECON:
+	ANN("hash deconstructor");
+	ANN("format: TODO");
+	F_NODE(nd_hdinfo->const_node, "TODO");
+	F_NODE(nd_hdinfo->kw_args_node, "TODO");
+	LAST_NODE;
+	F_NODE(nd_hdinfo->kw_rest_arg_node, "TODO");
 	return;
 
       case NODE_ARGS_AUX:

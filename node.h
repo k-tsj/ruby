@@ -26,7 +26,9 @@ enum node_type {
     NODE_UNLESS,
     NODE_CASE,
     NODE_CASE2,
+    NODE_CASE3,
     NODE_WHEN,
+    NODE_IN,
     NODE_WHILE,
     NODE_UNTIL,
     NODE_ITER,
@@ -121,6 +123,8 @@ enum node_type {
     NODE_ATTRASGN,
     NODE_LAMBDA,
     NODE_METHREF,
+    NODE_ADECON,
+    NODE_HDECON,
     NODE_LAST
 };
 
@@ -162,6 +166,8 @@ typedef struct RNode {
 	long state;
 	struct rb_global_entry *entry;
 	struct rb_args_info *args;
+        struct rb_ary_deconstructor_info *adinfo;
+        struct rb_hash_deconstructor_info *hdinfo;
 	VALUE value;
     } u3;
     rb_code_location_t nd_loc;
@@ -248,6 +254,9 @@ typedef struct RNode {
 #define nd_args  u3.node
 #define nd_ainfo u3.args
 
+#define nd_adinfo u3.adinfo
+#define nd_hdinfo u3.hdinfo
+
 #define nd_defn  u3.node
 
 #define nd_cpath u1.node
@@ -276,7 +285,9 @@ typedef struct RNode {
 #define NEW_UNLESS(c,t,e,loc) NEW_NODE(NODE_UNLESS,c,t,e,loc)
 #define NEW_CASE(h,b,loc) NEW_NODE(NODE_CASE,h,b,0,loc)
 #define NEW_CASE2(b,loc) NEW_NODE(NODE_CASE2,0,b,0,loc)
+#define NEW_CASE3(h,b,loc) NEW_NODE(NODE_CASE3,h,b,0,loc)
 #define NEW_WHEN(c,t,e,loc) NEW_NODE(NODE_WHEN,c,t,e,loc)
+#define NEW_IN(c,t,e,loc) NEW_NODE(NODE_IN,c,t,e,loc)
 #define NEW_WHILE(c,b,n,loc) NEW_NODE(NODE_WHILE,c,b,n,loc)
 #define NEW_UNTIL(c,b,n,loc) NEW_NODE(NODE_UNTIL,c,b,n,loc)
 #define NEW_FOR(i,b,loc) NEW_NODE(NODE_FOR,0,b,i,loc)
@@ -430,6 +441,21 @@ struct rb_args_info {
     NODE *kw_rest_arg;
 
     NODE *opt_args;
+};
+
+struct rb_ary_deconstructor_info {
+    NODE *const_node;
+
+    NODE *pre_args_node;
+    NODE *rest_arg_node;
+    NODE *post_args_node;
+};
+
+struct rb_hash_deconstructor_info {
+    NODE *const_node;
+
+    NODE *kw_args_node;
+    NODE *kw_rest_arg_node;
 };
 
 struct parser_params;
