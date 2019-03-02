@@ -2656,6 +2656,7 @@ primary		: literal
 		    {
 		    /*%%%*/
 			$$ = NEW_CASE3($2, $4, &@$);
+			rb_warn0L(nd_line($$), "Pattern matching is experimental, and the behavior may change in future versions of Ruby!");
 		    /*% %*/
 		    /*% ripper: case!($2, $4) %*/
 		    }
