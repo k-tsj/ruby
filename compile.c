@@ -5428,7 +5428,7 @@ iseq_compile_pattern_each(rb_iseq_t *iseq, LINK_ANCHOR *const ret, const NODE *c
         ADD_INSN1(ret, line, putspecialobject, INT2FIX(VM_SPECIAL_OBJECT_VMCORE));
         ADD_INSN1(ret, line, putobject, rb_eTypeError);
         ADD_INSN1(ret, line, putobject, rb_fstring_lit("deconstruct must return Array"));
-        ADD_CALL(ret, line, rb_intern("raise"), INT2FIX(2));
+        ADD_CALL(ret, line, id_core_raise, INT2FIX(2));
 
         ADD_LABEL(ret, match_failed);
         ADD_INSN(ret, line, pop);
@@ -5594,7 +5594,7 @@ iseq_compile_pattern_each(rb_iseq_t *iseq, LINK_ANCHOR *const ret, const NODE *c
         ADD_INSN1(ret, line, putspecialobject, INT2FIX(VM_SPECIAL_OBJECT_VMCORE));
         ADD_INSN1(ret, line, putobject, rb_eTypeError);
         ADD_INSN1(ret, line, putobject, rb_fstring_lit("deconstruct_keys must return Hash"));
-        ADD_CALL(ret, line, rb_intern("raise"), INT2FIX(2));
+        ADD_CALL(ret, line, id_core_raise, INT2FIX(2));
 
         ADD_LABEL(ret, match_failed);
         ADD_INSN(ret, line, pop);
@@ -5833,7 +5833,7 @@ compile_case3(rb_iseq_t *iseq, LINK_ANCHOR *const ret, const NODE *const orig_no
         ADD_INSN1(cond_seq, nd_line(orig_node), putspecialobject, INT2FIX(VM_SPECIAL_OBJECT_VMCORE));
         ADD_INSN1(cond_seq, nd_line(orig_node), putobject, rb_eNoMatchingPatternError);
         ADD_INSN1(cond_seq, nd_line(orig_node), topn, INT2FIX(2));
-        ADD_CALL(cond_seq, nd_line(orig_node), rb_intern("raise"), INT2FIX(2));
+        ADD_CALL(cond_seq, nd_line(orig_node), id_core_raise, INT2FIX(2));
         ADD_INSN(cond_seq, nd_line(orig_node), pop);
         ADD_INSN(cond_seq, nd_line(orig_node), pop);
         if (!popped) {
