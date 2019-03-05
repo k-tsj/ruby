@@ -5833,7 +5833,7 @@ compile_case3(rb_iseq_t *iseq, LINK_ANCHOR *const ret, const NODE *const orig_no
         ADD_INSN1(cond_seq, nd_line(orig_node), putspecialobject, INT2FIX(VM_SPECIAL_OBJECT_VMCORE));
         ADD_INSN1(cond_seq, nd_line(orig_node), putobject, rb_eNoMatchingPatternError);
         ADD_INSN1(cond_seq, nd_line(orig_node), topn, INT2FIX(2));
-        ADD_CALL(cond_seq, nd_line(orig_node), id_core_raise, INT2FIX(2));
+        ADD_SEND(cond_seq, nd_line(orig_node), id_core_raise, INT2FIX(2));
         ADD_INSN(cond_seq, nd_line(orig_node), pop);
         ADD_INSN(cond_seq, nd_line(orig_node), pop);
         if (!popped) {
