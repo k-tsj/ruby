@@ -316,7 +316,7 @@ END
     end
   end
 
-  def test_array_deconstructor_pattern
+  def test_array_pattern
     assert_block do
       [[0], C.new([0])].all? do |i|
         case i
@@ -617,7 +617,7 @@ END
     end
   end
 
-  def test_hash_deconstructor_pattern
+  def test_hash_pattern
     assert_block do
       [{}, C.new({})].all? do |i|
         case i
