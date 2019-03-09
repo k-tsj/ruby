@@ -307,6 +307,7 @@ END
         true
       end
     end
+
     assert_block do
       case [0, 0]
       in a, ^a

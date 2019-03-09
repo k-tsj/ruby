@@ -422,7 +422,7 @@ eot
       [:@int, "0", [1, 5]],
       [:in, [:@int, "0", [1, 12]], [[:void_stmt]], nil]],
 
-    %q{ case 0; in a:, a:;end } =>
+    %q{ case 0; in a:, a:; end } =>
     nil,
 
     %q{ case 0; in a?:; end } =>
