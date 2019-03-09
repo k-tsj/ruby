@@ -3792,10 +3792,10 @@ p_kw		: tLABEL p_expr
 		    }
 		| tLABEL
 		    {
-		    /*%%%*/
-			if (!is_local_id($1)) {
+			if (!is_local_id(get_id($1))) {
 			    yyerror0("key must be valid as local variables");
 			}
+		    /*%%%*/
 			$$ = list_append(p, NEW_LIST(NEW_LIT(ID2SYM($1), &@$), &@$), assignable(p, $1, 0, &@$));
 		    /*% %*/
 		    /*% ripper: rb_ary_new_from_args(1, rb_ary_new_from_args(2, get_value($1), Qnil)) %*/

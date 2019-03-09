@@ -423,7 +423,10 @@ eot
       [:in, [:@int, "0", [1, 12]], [[:void_stmt]], nil]],
 
     %q{ case 0; in a:, a:;end } =>
-    nil
+    nil,
+
+    %q{ case 0; in a?:; end } =>
+    nil,
   }
   pattern_matching_data.each_with_index do |(src, expected), i|
     define_method(:"test_pattern_matching_#{i}") do
