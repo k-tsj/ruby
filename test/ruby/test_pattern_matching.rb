@@ -98,6 +98,17 @@ class TestPatternMatching < Test::Unit::TestCase
       })
     end
 
+    assert_block do
+      tap do |a|
+        tap do
+          case true
+          in a
+            a
+          end
+        end
+      end
+    end
+
     assert_raise(NoMatchingPatternError) do
       o = BasicObject.new
       def o.match

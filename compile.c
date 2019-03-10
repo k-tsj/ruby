@@ -5644,6 +5644,7 @@ iseq_compile_pattern_each(rb_iseq_t *iseq, LINK_ANCHOR *const ret, const NODE *c
         ADD_INSN1(ret, line, putobject, Qtrue);
         break;
       }
+      case NODE_DASGN:
       case NODE_DASGN_CURR: {
         int idx, lv, ls;
         ID id = node->nd_vid;
