@@ -98,6 +98,17 @@ class TestPatternMatching < Test::Unit::TestCase
       })
     end
 
+    assert_block do
+      tap do |a|
+        tap do
+          case true
+          in a
+            a
+          end
+        end
+      end
+    end
+
     assert_raise(NoMatchingPatternError) do
       o = BasicObject.new
       def o.match
@@ -307,6 +318,7 @@ END
         true
       end
     end
+
     assert_block do
       case [0, 0]
       in a, ^a
@@ -315,7 +327,7 @@ END
     end
   end
 
-  def test_array_deconstructor_pattern
+  def test_array_pattern
     assert_block do
       [[0], C.new([0])].all? do |i|
         case i
@@ -616,7 +628,7 @@ END
     end
   end
 
-  def test_hash_deconstructor_pattern
+  def test_hash_pattern
     assert_block do
       [{}, C.new({})].all? do |i|
         case i

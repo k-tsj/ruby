@@ -3792,10 +3792,10 @@ p_kw		: tLABEL p_expr
 		    }
 		| tLABEL
 		    {
-		    /*%%%*/
-			if (!is_local_id($1)) {
-			    yyerror0("key must be valid as local variables");
+			if (!is_local_id(get_id($1))) {
+			    yyerror1(&@1, "key must be valid as local variables");
 			}
+		    /*%%%*/
 			$$ = list_append(p, NEW_LIST(NEW_LIT(ID2SYM($1), &@$), &@$), assignable(p, $1, 0, &@$));
 		    /*% %*/
 		    /*% ripper: rb_ary_new_from_args(1, rb_ary_new_from_args(2, get_value($1), Qnil)) %*/
@@ -3809,7 +3809,7 @@ p_kw		: tLABEL p_expr
 			    $$ = list_append(p, NEW_LIST(node, &loc), $4);
 			}
 			else {
-			    yyerror0("symbol literal with interpolation is not allowed");
+			    yyerror1(&loc, "symbol literal with interpolation is not allowed");
 			    $$ = 0;
 			}
 		    /*% %*/
@@ -3824,12 +3824,12 @@ p_kw		: tLABEL p_expr
 			if (nd_type(node) == NODE_LIT) {
 			    id = SYM2ID(node->nd_lit);
 			    if (!is_local_id(id)) {
-				yyerror0("key must be valid as local variables");
+				yyerror1(&loc, "key must be valid as local variables");
 			    }
 			    $$ = list_append(p, NEW_LIST(node, &loc), assignable(p, id, 0, &@$));
 			}
 			else {
-			    yyerror0("symbol literal with interpolation is not allowed");
+			    yyerror1(&loc, "symbol literal with interpolation is not allowed");
 			    $$ = 0;
 			}
 		    /*% %*/
