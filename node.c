@@ -1053,6 +1053,27 @@ dump_node(VALUE buf, VALUE indent, int comment, const NODE * node)
         F_NODE(nd_apinfo->post_args, "post arguments");
         return;
 
+      case NODE_FNDPTN:
+        ANN("find pattern");
+        ANN("format: [nd_pconst](*[pre_rest_arg], args, ..., *[post_rest_arg])");
+        F_NODE(nd_pconst, "constant");
+        if (NODE_NAMED_REST_P(node->nd_fpinfo->pre_rest_arg)) {
+            F_NODE(nd_fpinfo->pre_rest_arg, "pre rest argument");
+        }
+        else {
+            F_MSG(nd_fpinfo->pre_rest_arg, "pre rest argument", "NODE_SPECIAL_NO_NAME_REST (rest argument without name)");
+        }
+        F_NODE(nd_fpinfo->args, "arguments");
+
+        LAST_NODE;
+        if (NODE_NAMED_REST_P(node->nd_fpinfo->post_rest_arg)) {
+            F_NODE(nd_fpinfo->post_rest_arg, "post rest argument");
+        }
+        else {
+            F_MSG(nd_fpinfo->post_rest_arg, "post rest argument", "NODE_SPECIAL_NO_NAME_REST (rest argument without name)");
+        }
+        return;
+
       case NODE_HSHPTN:
         ANN("hash pattern");
         ANN("format: [nd_pconst]([nd_pkwargs], ..., **[nd_pkwrestarg])");
