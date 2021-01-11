@@ -6147,26 +6147,7 @@ iseq_compile_pattern_each(rb_iseq_t *iseq, LINK_ANCHOR *const ret, const NODE *c
         ADD_INSNL(ret, line, jump, unmatched);
         break;
       }
-      case NODE_LIT:
-      case NODE_STR:
-      case NODE_XSTR:
-      case NODE_DSTR:
-      case NODE_DSYM:
-      case NODE_DREGX:
-      case NODE_LIST:
-      case NODE_ZLIST:
-      case NODE_LAMBDA:
-      case NODE_DOT2:
-      case NODE_DOT3:
-      case NODE_CONST:
-      case NODE_LVAR:
-      case NODE_DVAR:
-      case NODE_TRUE:
-      case NODE_FALSE:
-      case NODE_SELF:
-      case NODE_NIL:
-      case NODE_COLON2:
-      case NODE_COLON3:
+      case NODE_BEGIN:
         CHECK(COMPILE(ret, "case in literal", node));
         ADD_INSN1(ret, line, checkmatch, INT2FIX(VM_CHECKMATCH_TYPE_CASE));
         ADD_INSNL(ret, line, branchif, matched);

@@ -145,13 +145,13 @@ eot
     [__LINE__, %q{ case 0; in 0; end }] =>
     [:case,
       [:@int, "0", [1, 5]],
-      [:in, [:@int, "0", [1, 11]], [[:void_stmt]], nil]],
+      [:in, [:begin, [:@int, "0", [1, 11]]], [[:void_stmt]], nil]],
 
     [__LINE__, %q{ case 0; in 0 if a; end }] =>
     [:case,
       [:@int, "0", [1, 5]],
       [:in,
-        [:if_mod, [:vcall, [:@ident, "a", [1, 16]]], [:@int, "0", [1, 11]]],
+        [:if_mod, [:vcall, [:@ident, "a", [1, 16]]], [:begin, [:@int, "0", [1, 11]]]],
         [[:void_stmt]],
         nil]],
 
@@ -159,7 +159,7 @@ eot
     [:case,
       [:@int, "0", [1, 5]],
       [:in,
-        [:unless_mod, [:vcall, [:@ident, "a", [1, 20]]], [:@int, "0", [1, 11]]],
+        [:unless_mod, [:vcall, [:@ident, "a", [1, 20]]], [:begin, [:@int, "0", [1, 11]]]],
         [[:void_stmt]],
         nil]],
 
@@ -271,7 +271,7 @@ eot
     [:case,
       [:@int, "0", [1, 5]],
       [:in,
-        [:hshptn, nil, [[[:@label, "a:", [1, 11]], [:@int, "0", [1, 14]]]], nil],
+        [:hshptn, nil, [[[:@label, "a:", [1, 11]], [:begin, [:@int, "0", [1, 14]]]]], nil],
         [[:void_stmt]],
         nil]],
 
@@ -290,7 +290,7 @@ eot
         [:hshptn,
           nil,
           [[[:string_content, [:@tstring_content, "a", [1, 12]]],
-              [:@int, "0", [1, 16]]]],
+              [:begin, [:@int, "0", [1, 16]]]]],
           nil],
         [[:void_stmt]],
         nil]],
@@ -312,8 +312,8 @@ eot
       [:in,
         [:hshptn,
           nil,
-          [[[:@label, "a:", [1, 11]], [:@int, "0", [1, 14]]],
-            [[:@label, "b:", [1, 17]], [:@int, "0", [1, 20]]]],
+          [[[:@label, "a:", [1, 11]], [:begin, [:@int, "0", [1, 14]]]],
+            [[:@label, "b:", [1, 17]], [:begin, [:@int, "0", [1, 20]]]]],
           nil],
         [[:void_stmt]],
         nil]],
@@ -323,7 +323,7 @@ eot
       [:@int, "0", [1, 5]],
       [:in,
         [:binary,
-          [:@int, "0", [1, 11]],
+          [:begin, [:@int, "0", [1, 11]]],
           :"=>",
           [:var_field, [:@ident, "a", [1, 16]]]],
         [[:void_stmt]],
@@ -333,7 +333,7 @@ eot
     [:case,
       [:@int, "0", [1, 5]],
       [:in,
-        [:binary, [:@int, "0", [1, 11]], :|, [:@int, "1", [1, 15]]],
+        [:binary, [:begin, [:@int, "0", [1, 11]]], :|, [:begin, [:@int, "1", [1, 15]]]],
         [[:void_stmt]],
         nil]],
 
@@ -343,7 +343,7 @@ eot
       [:in,
         [:aryptn,
           [:var_ref, [:@const, "A", [1, 11]]],
-          [[:@int, "0", [1, 13]]],
+          [[:begin, [:@int, "0", [1, 13]]]],
           nil,
           nil],
         [[:void_stmt]],
@@ -453,7 +453,7 @@ eot
     [:case,
       [:@int, "0", [1, 5]],
       [:in,
-        [:hshptn, nil, [[[:@label, "a:", [1, 12]], [:@int, "0", [1, 15]]]], nil],
+        [:hshptn, nil, [[[:@label, "a:", [1, 12]], [:begin, [:@int, "0", [1, 15]]]]], nil],
         [[:void_stmt]],
         nil]],
 
@@ -465,7 +465,7 @@ eot
     [__LINE__, %q{ case 0; in (0); end }] =>
     [:case,
       [:@int, "0", [1, 5]],
-      [:in, [:@int, "0", [1, 12]], [[:void_stmt]], nil]],
+      [:in, [:begin, [:@int, "0", [1, 12]]], [[:void_stmt]], nil]],
 
     [__LINE__, %q{ case 0; in a:, a:; end }] =>
     nil,
